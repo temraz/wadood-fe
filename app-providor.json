@@ -1,39 +1,32 @@
 {
   "expo": {
-    "name": "PetMe",
-    "slug": "PetMe",
+    "name": "PetMe Provider",
+    "slug": "PetMeProvider",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "petmeprovider",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.petme.app",
+      "bundleIdentifier": "com.petmeprovidor.app",
       "config": {
         "googleMapsApiKey": "AIzaSyCd0luF6FXBYOvJy1ZWpr3ALjjYhJ5LtOo"
       },
-      "supportsRTL": true,
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "supportsRTL": true
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.petme.app",
+      "package": "com.petmeprovidor.app",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCd0luF6FXBYOvJy1ZWpr3ALjjYhJ5LtOo"
         }
       },
-      "supportsRTL": true,
-      "permissions": [
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      "supportsRTL": true
     },
     "web": {
       "bundler": "metro",
@@ -52,11 +45,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "router": {
-        "origin": false
-      }
     }
   }
 }

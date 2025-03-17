@@ -9,6 +9,7 @@ import {
   TextInput,
   PanResponder,
   I18nManager,
+  ScrollView,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,7 +33,7 @@ export default function RatingSheet({ visible, onClose, order, onSubmit }) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return gestureState.dy > 0; // Only respond to downward drag
+        return gestureState.dy > 0;
       },
       onPanResponderGrant: () => {
         pan.setOffset({
@@ -40,16 +41,15 @@ export default function RatingSheet({ visible, onClose, order, onSubmit }) {
         });
       },
       onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) { // Only allow downward movement
+        if (gestureState.dy > 0) {
           pan.y.setValue(gestureState.dy);
         }
       },
       onPanResponderRelease: (_, gestureState) => {
         pan.flattenOffset();
-        if (gestureState.dy > 100) { // Threshold to close
+        if (gestureState.dy > 100) {
           onClose();
         } else {
-          // Reset position
           Animated.spring(pan.y, {
             toValue: 0,
             useNativeDriver: true,
@@ -105,7 +105,6 @@ export default function RatingSheet({ visible, onClose, order, onSubmit }) {
     });
   };
 
-  // Calculate total amount from items
   const totalAmount = order.items?.reduce((sum, item) => sum + (item.price || 0), 0) || 0;
 
   return (
@@ -124,101 +123,116 @@ export default function RatingSheet({ visible, onClose, order, onSubmit }) {
               { translateY: pan.y },
             ],
           },
-          { paddingBottom: insets.bottom },
         ]}
       >
         <BlurView intensity={80} style={styles.content}>
-          <View 
-            {...panResponder.panHandlers}
-            style={styles.handle} 
-          />
-          
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <Text style={[styles.title]}>{t.search.rating.title || 'Rate Your Experience'}</Text>
-              <Text style={[styles.subtitle]}>{t.search.rating.subtitle || 'How was your experience with this service?'}</Text>
+          {/* Fixed Header */}
+          <View {...panResponder.panHandlers}>
+            <View style={styles.handle} />
+            <View style={styles.header}>
+              <View style={styles.headerContent}>
+                <Text style={[styles.title]}>{t.search.rating.title || 'Rate Your Experience'}</Text>
+                <Text style={[styles.subtitle]}>{t.search.rating.subtitle || 'How was your service?'}</Text>
+              </View>
             </View>
           </View>
 
-          <View style={styles.orderSummary}>
-            <Text style={[styles.providerName]}>
-              {order.provider_name}
-            </Text>
-            <Text style={[styles.orderDate]}>
-              {formatDate(order.created_at)}
-            </Text>
-            <View style={styles.servicesList}>
-              {order.items?.map((item, index) => (
-                <View key={index} style={[styles.serviceItem]}>
-                  <Text style={[styles.serviceName]}>
-                    {item.name}
-                  </Text>
-                  <Text style={[styles.servicePrice]}>
-                    {item.price} SAR
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <View style={[styles.totalRow]}>
-              <Text style={[styles.totalLabel]}>{t.search.rating.totalAmount || 'Total Amount'}</Text>
-              <Text style={[styles.totalAmount]}>{totalAmount} SAR</Text>
-            </View>
-          </View>
-
-          <View style={styles.ratingContainer}>
-            <View style={[styles.starsContainer, isRTL && styles.rtlRow]}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => setRating(star)}
-                >
-                  <Ionicons
-                    name={rating >= star ? "star" : "star-outline"}
-                    size={36}
-                    color={rating >= star ? "#FFD93D" : "#e0e0e0"}
-                    style={styles.star}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={[styles.ratingText]}>
-              {getRatingText()}
-            </Text>
-          </View>
-
-          <View style={styles.commentContainer}>
-            <TextInput
-              style={[styles.commentInput]}
-              placeholder={t.search.rating.commentPlaceholder || 'Share your experience (optional)'}
-              placeholderTextColor="#999"
-              multiline
-              numberOfLines={4}
-              value={comment}
-              onChangeText={setComment}
-              textAlign={isRTL ? 'right' : 'left'}
-              textAlignVertical="top"
-            />
-          </View>
-
-          <TouchableOpacity 
-            style={[
-              styles.submitButton,
-              rating === 0 && styles.submitButtonDisabled
-            ]} 
-            onPress={handleSubmit}
-            disabled={rating === 0}
+          {/* Scrollable Content */}
+          <ScrollView 
+            style={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
           >
-            <LinearGradient
-              colors={['#86A8E7', '#7F7FD5']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.gradient}
-            >
-              <Text style={[styles.submitButtonText]}>
-                {t.search.rating.submitButton || 'Submit Rating'}
+            <View style={styles.orderSummary}>
+              <Text style={[styles.providerName]}>
+                {order.provider_name}
               </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+              <Text style={[styles.orderDate]}>
+                {formatDate(order.created_at)}
+              </Text>
+              <View style={styles.servicesList}>
+                {order.items?.map((item, index) => (
+                  <View key={index} style={[styles.serviceItem]}>
+                    <View style={styles.serviceNameContainer}>
+                      <Text style={[styles.serviceName]}>
+                        {item.name}
+                      </Text>
+                      {item.duration && (
+                        <Text style={[styles.duration]}>
+                          {item.duration} min
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={[styles.servicePrice]}>
+                      {item.price} SAR
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View style={[styles.totalRow]}>
+                <Text style={[styles.totalLabel]}>{t.search.rating.totalAmount || 'Total Amount'}</Text>
+                <Text style={[styles.totalAmount]}>{totalAmount} SAR</Text>
+              </View>
+            </View>
+
+            <View style={styles.ratingContainer}>
+              <View style={[styles.starsContainer, isRTL && styles.rtlRow]}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setRating(star)}
+                  >
+                    <Ionicons
+                      name={rating >= star ? "star" : "star-outline"}
+                      size={36}
+                      color={rating >= star ? "#FFD93D" : "#e0e0e0"}
+                      style={styles.star}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={[styles.ratingText]}>
+                {getRatingText()}
+              </Text>
+            </View>
+
+            <View style={styles.commentContainer}>
+              <TextInput
+                style={[styles.commentInput]}
+                placeholder={t.search.rating.commentPlaceholder || 'Share your experience (optional)'}
+                placeholderTextColor="#999"
+                multiline
+                numberOfLines={4}
+                value={comment}
+                onChangeText={setComment}
+                textAlign={isRTL ? 'right' : 'left'}
+                textAlignVertical="top"
+              />
+            </View>
+          </ScrollView>
+
+          {/* Fixed Footer */}
+          <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+            <TouchableOpacity 
+              style={[
+                styles.submitButton,
+                rating === 0 && styles.submitButtonDisabled
+              ]} 
+              onPress={handleSubmit}
+              disabled={rating === 0}
+            >
+              <LinearGradient
+                colors={['#86A8E7', '#7F7FD5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.gradient}
+              >
+                <Text style={[styles.submitButtonText]}>
+                  {t.search.rating.submitButton || 'Submit Rating'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </BlurView>
       </Animated.View>
     </View>
@@ -272,13 +286,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     alignSelf: 'center',
     marginTop: 12,
-    marginBottom: 8, // Add some bottom margin
-    // Make the touch target bigger
-    paddingVertical: 1, // Increase touch area
+    marginBottom: 8,
   },
   header: {
     padding: 16,
-    paddingTop: 20,
+    paddingTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   headerContent: {
     alignItems: 'center',
@@ -294,6 +308,9 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  scrollContent: {
+    flex: 1,
   },
   orderSummary: {
     padding: 16,
@@ -315,11 +332,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 4,
+  },
+  serviceNameContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginRight: 12,
   },
   serviceName: {
     fontSize: 14,
     color: '#666',
+    flex: 1,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  duration: {
+    fontSize: 12,
+    color: '#86A8E7',
+    marginLeft: 8,
   },
   servicePrice: {
     fontSize: 14,
@@ -368,6 +399,7 @@ const styles = StyleSheet.create({
   },
   commentContainer: {
     padding: 16,
+    paddingTop: 0,
   },
   commentInput: {
     backgroundColor: '#f8f9fa',
@@ -378,8 +410,13 @@ const styles = StyleSheet.create({
     color: '#2A363B',
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
   submitButton: {
-    margin: 16,
     borderRadius: 16,
     overflow: 'hidden',
   },

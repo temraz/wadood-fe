@@ -854,104 +854,106 @@ export default function OrderDetailsScreen() {
       {/* Updated Footer */}
       <SafeAreaView edges={['bottom']} style={[styles.safeFooter, { backgroundColor: COLORS.card }]}>
         <BlurView intensity={90} tint="light" style={styles.footer}>
-          <View style={styles.actionButtons}>
-            {/* Show Accept Order button for PENDING status */}
-            {order?.status === 'PENDING' && (
-              <TouchableOpacity 
-                style={[styles.actionButton, { flex: 1 }]}
-                onPress={handleAcceptOrder}
-              >
-                <LinearGradient
-                  colors={['#4CAF50', '#45A049']}
-                  style={styles.actionGradient}
+          {(userRole === 'admin' || userRole === 'staff' || userRole === 'driver') && (
+            <View style={styles.actionButtons}>
+              {/* Show Accept Order button for PENDING status */}
+              {order?.status === 'PENDING' && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, { flex: 1 }]}
+                  onPress={handleAcceptOrder}
                 >
-                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>
-                    Accept Order
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+                  <LinearGradient
+                    colors={['#4CAF50', '#45A049']}
+                    style={styles.actionGradient}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>
+                      Accept Order
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
 
-            {/* Show Start Service/Delivery button when order is CONFIRMED or ACCEPTED */}
-            {(order?.status === 'CONFIRMED' || order?.status === 'ACCEPTED') && (
-              <TouchableOpacity 
-                style={[styles.actionButton, { flex: 1 }]}
-                onPress={handleStartService}
-              >
-                <LinearGradient
-                  colors={['#2196F3', '#1976D2']}
-                  style={styles.actionGradient}
+              {/* Show Start Service/Delivery button when order is CONFIRMED or ACCEPTED */}
+              {(order?.status === 'CONFIRMED' || order?.status === 'ACCEPTED') && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, { flex: 1 }]}
+                  onPress={handleStartService}
                 >
-                  <Ionicons name={order?.order_type === 'product' ? "bicycle" : "play-circle"} size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>
-                    {order?.order_type === 'product' ? 'Start Delivery' : 'Start Service'}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+                  <LinearGradient
+                    colors={['#2196F3', '#1976D2']}
+                    style={styles.actionGradient}
+                  >
+                    <Ionicons name={order?.order_type === 'product' ? "bicycle" : "play-circle"} size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>
+                      {order?.order_type === 'product' ? 'Start Delivery' : 'Start Service'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
 
-            {/* Show Complete Service/Delivered button when order is IN_PROGRESS */}
-            {order?.status === 'IN_PROGRESS' && (
-              <TouchableOpacity 
-                style={[styles.actionButton, { flex: 1 }]}
-                onPress={handleCompleteService}
-              >
-                <LinearGradient
-                  colors={['#4CAF50', '#45A049']}
-                  style={styles.actionGradient}
+              {/* Show Complete Service/Delivered button when order is IN_PROGRESS */}
+              {order?.status === 'IN_PROGRESS' && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, { flex: 1 }]}
+                  onPress={handleCompleteService}
                 >
-                  <Ionicons name={order?.order_type === 'product' ? "checkmark-done-circle" : "checkmark-circle"} size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>
-                    {order?.order_type === 'product' ? 'Mark as Delivered' : 'Complete Service'}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+                  <LinearGradient
+                    colors={['#4CAF50', '#45A049']}
+                    style={styles.actionGradient}
+                  >
+                    <Ionicons name={order?.order_type === 'product' ? "checkmark-done-circle" : "checkmark-circle"} size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>
+                      {order?.order_type === 'product' ? 'Mark as Delivered' : 'Complete Service'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
 
-            {/* Show Cancel Order button for PENDING status */}
-            {order?.status === 'PENDING' && (
-              <TouchableOpacity 
-                style={[styles.actionButton, { flex: 1 }]}
-                onPress={handleCancelOrder}
-                disabled={cancelLoading}
-              >
-                <LinearGradient
-                  colors={['#FF6B6B', '#FF8E8E']}
-                  style={styles.actionGradient}
+              {/* Show Cancel Order button for PENDING status */}
+              {order?.status === 'PENDING' && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, { flex: 1 }]}
+                  onPress={handleCancelOrder}
+                  disabled={cancelLoading}
                 >
-                  {cancelLoading ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <>
-                      <Ionicons name="close-circle" size={20} color="#fff" />
-                      <Text style={styles.actionButtonText}>
-                        {translations?.orderDetails?.cancelOrder || 'Cancel Order'}
-                      </Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+                  <LinearGradient
+                    colors={['#FF6B6B', '#FF8E8E']}
+                    style={styles.actionGradient}
+                  >
+                    {cancelLoading ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle" size={20} color="#fff" />
+                        <Text style={styles.actionButtonText}>
+                          {translations?.orderDetails?.cancelOrder || 'Cancel Order'}
+                        </Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
 
-            {/* Updated View Receipt button */}
-            {order?.status === 'COMPLETED' && (
-              <TouchableOpacity 
-                style={[styles.actionButton, { flex: 1 }]}
-                onPress={handleViewReceipt}
-              >
-                <LinearGradient
-                  colors={COLORS.gradient}
-                  style={styles.actionGradient}
+              {/* Updated View Receipt button */}
+              {order?.status === 'COMPLETED' && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, { flex: 1 }]}
+                  onPress={handleViewReceipt}
                 >
-                  <Ionicons name="receipt" size={20} color="#fff" />
-                  <Text style={styles.actionButtonText}>
-                    {translations?.orderDetails?.viewReceipt || 'View Receipt'}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-          </View>
+                  <LinearGradient
+                    colors={COLORS.gradient}
+                    style={styles.actionGradient}
+                  >
+                    <Ionicons name="receipt" size={20} color="#fff" />
+                    <Text style={styles.actionButtonText}>
+                      {translations?.orderDetails?.viewReceipt || 'View Receipt'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </BlurView>
       </SafeAreaView>
       <Toast 

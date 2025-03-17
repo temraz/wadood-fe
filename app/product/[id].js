@@ -66,20 +66,22 @@ export default function ProductScreen() {
   const handleAddToCart = async () => {
     try {
       setIsAddingToCart(true);
+
+      // Add debug logging to check provider status
+      console.log('Product provider status (details):', {
+        productId: product.id,
+        providerStatus: product.provider?.is_open,
+        provider: product.provider
+      });
+
       const result = await addToCart(product, product.provider_id, language);
       
       if (result.success) {
-        // Toast.show({
-        //   type: 'success',
-        //   text1: t.products.addToCartSuccess,
-        //   visibilityTime: 2000,
-        // });
         router.back();
       } else {
         throw new Error(result.error || t.products.addToCartError);
       }
     } catch (error) {
-      // console.error('Add to cart error:', error);
       Toast.show({
         type: 'error',
         text1: t.common.error,
@@ -266,9 +268,12 @@ export default function ProductScreen() {
         </View>
 
         <TouchableOpacity 
-          style={[styles.addButton, !product.stock && styles.addButtonDisabled]}
+          style={[
+            styles.addButton, 
+            (!product.stock || product.provider?.is_open === false) && styles.addButtonDisabled
+          ]}
           onPress={handleAddToCart}
-          disabled={!product.stock || isAddingToCart}
+          disabled={!product.stock || product.provider?.is_open === false || isAddingToCart}
         >
           <LinearGradient
             colors={['#86A8E7', '#7F7FD5']}
@@ -280,7 +285,11 @@ export default function ProductScreen() {
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={styles.addButtonText}>
-                {product.stock ? t.products.addToCart : t.products.outOfStock}
+                {product.provider?.is_open === false
+                  ? t.provider.orders.status.closed 
+                  : product.stock 
+                    ? t.products.addToCart 
+                    : t.products.outOfStock}
               </Text>
             )}
           </LinearGradient>

@@ -139,17 +139,22 @@ export default function ProductsSettingsScreen() {
     if (!pagination.hasMore && page > 1) return;
 
     try {
+      console.log('Starting to fetch products...');
       setIsLoadingProducts(true);
       const token = await AsyncStorage.getItem('token');
       
       if (!token) {
+        console.log('No token found, redirecting to login');
         router.replace('/login');
         return;
       }
 
       // Get provider ID from user data
       const userDataString = await AsyncStorage.getItem('user');
+      console.log('User data from storage:', userDataString);
+      
       if (!userDataString) {
+        console.log('No user data found');
         Toast.show({
           type: 'error',
           text1: language === 'ar' ? 'خطأ في المصادقة' : 'Authentication Error',
@@ -160,9 +165,11 @@ export default function ProductsSettingsScreen() {
       }
 
       const userData = JSON.parse(userDataString);
+      console.log('Parsed user data:', userData);
       const providerId = userData.provider_id;
 
       if (!providerId) {
+        console.log('No provider ID found in user data');
         Toast.show({
           type: 'error',
           text1: language === 'ar' ? 'خطأ' : 'Error',
@@ -171,6 +178,7 @@ export default function ProductsSettingsScreen() {
         return;
       }
 
+      console.log('Making API request with provider ID:', providerId);
       const response = await fetch(
         `${API_BASE_URL}/api/products?page=${page}&limit=10&provider_id=${providerId}`,
         {
@@ -182,10 +190,12 @@ export default function ProductsSettingsScreen() {
       );
 
       if (!response.ok) {
+        console.log('API response not OK:', response.status, response.statusText);
         throw new Error('Failed to fetch products');
       }
 
       const data = await response.json();
+      console.log('API response data:', data);
       
       setProducts(prevProducts => 
         page === 1 ? data.products : [...prevProducts, ...data.products]
@@ -198,6 +208,7 @@ export default function ProductsSettingsScreen() {
       });
     } catch (error) {
       console.error('Error fetching products:', error);
+      console.error('Error details:', error.message);
       Toast.show({
         type: 'error',
         text1: 'Error',

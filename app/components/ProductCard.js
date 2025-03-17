@@ -15,9 +15,20 @@ const ProductCard = ({ product, categories = [], style }) => {
     return isRTL ? category?.name_ar : category?.name;
   };
 
+  // Add debug logging to check provider status
+  console.log('Product provider status:', {
+    productId: product.id,
+    providerStatus: product.provider?.is_open,
+    provider: product.provider
+  });
+
   return (
     <TouchableOpacity 
-      style={[styles.card, style]}
+      style={[
+        styles.card, 
+        style,
+        product.provider?.is_open === false && styles.disabledCard
+      ]}
       onPress={() => router.push(`/product/${product.id}`)}
     >
       <View style={styles.imageContainer}>
@@ -26,9 +37,19 @@ const ProductCard = ({ product, categories = [], style }) => {
             uri: product.image_url,
             cache: 'force-cache'
           }}
-          style={styles.image}
+          style={[
+            styles.image,
+            product.provider?.is_open === false && styles.disabledImage
+          ]}
           resizeMode="cover"
         />
+        {product.provider?.is_open === false && (
+          <View style={styles.closedOverlay}>
+            <Text style={styles.closedText}>
+              {t.provider.orders.status.closed || 'Closed'}
+            </Text>
+          </View>
+        )}
         {product.badge && (
           <View style={[styles.badgeContainer, isRTL && styles.badgeContainerRTL]}>
             <LinearGradient
@@ -156,6 +177,31 @@ const styles = StyleSheet.create({
   },
   rtlText: {
     textAlign: 'right',
+  },
+  disabledCard: {
+    opacity: 0.7,
+  },
+  disabledImage: {
+    opacity: 0.5,
+  },
+  closedOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  closedText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
 });
 

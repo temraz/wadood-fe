@@ -57,6 +57,8 @@ export default function LoginScreen() {
         // Redirect based on user role
         if (user.role === 'user') {
           router.replace('/home');
+        } else if (user.role === 'driver') {
+          router.replace('/driverHome');
         } else if (user.role === 'staff' || user.role === 'admin' || user.role === 'provider') {
           router.replace('/partnerHome');
         }
@@ -238,29 +240,42 @@ export default function LoginScreen() {
       console.log('OTP Verification Data:', data);
       
       if (data.success) {
-        // Save auth tokens
-        await AsyncStorage.setItem('token', data.token);
-        await AsyncStorage.setItem('refresh_token', data.refresh_token);
-        
-        // Save user data
-        await AsyncStorage.setItem('user', JSON.stringify(data.user));
-        
-        Toast.show({
-          type: 'success',
-          text1: t.login.loginSuccess || 'Login successful',
-          visibilityTime: 2000,
-        });
-        
-        if (data.requires_registration) {
-          router.replace('/signup');
-        } else {
-          // Redirect based on user role
-          const userRole = data.user.role;
-          if (userRole === 'user') {
-            router.replace('/home');
-          } else if (userRole === 'staff' || userRole === 'admin' || userRole === 'provider') {
-            router.replace('/partnerHome');
+        // Check if token exists in response
+        if (data.token && data.refresh_token && data.user) {
+          // Save auth tokens
+          await AsyncStorage.setItem('token', data.token);
+          await AsyncStorage.setItem('refresh_token', data.refresh_token);
+          
+          // Save user data
+          await AsyncStorage.setItem('user', JSON.stringify(data.user));
+          
+          Toast.show({
+            type: 'success',
+            text1: t.login.loginSuccess || 'Login successful',
+            visibilityTime: 2000,
+          });
+          
+          if (data.requires_registration) {
+            router.replace('/signup');
+          } else {
+            // Redirect based on user role
+            const userRole = data.user.role;
+            if (userRole === 'user') {
+              router.replace('/home');
+            } else if (userRole === 'driver') {
+              router.replace('/driverHome');
+            } else if (userRole === 'staff' || userRole === 'admin' || userRole === 'provider') {
+              router.replace('/partnerHome');
+            }
           }
+        } else {
+          // Handle case where token is not in response
+          console.error('Token missing from response:', data);
+          Toast.show({
+            type: 'error',
+            text1: 'Authentication error',
+            text2: 'Please try again or contact support if the issue persists',
+          });
         }
       } else {
         Toast.show({

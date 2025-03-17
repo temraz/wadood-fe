@@ -164,6 +164,14 @@ export default function CheckoutScreen() {
         return;
       }
 
+      const orderData = {
+        cart_id: parseInt(cart_id),
+        address_id: selectedAddress.id,
+        payment_method: 'cash'
+      };
+
+      console.log('Placing order with data:', orderData);
+
       const response = await fetch(`${API_BASE_URL}/api/orders`, {
         method: 'POST',
         headers: {
@@ -171,14 +179,12 @@ export default function CheckoutScreen() {
           'Content-Type': 'application/json',
           'Accept-Language': language
         },
-        body: JSON.stringify({
-          cart_id: parseInt(cart_id),
-          address_id: selectedAddress.id,
-          payment_method: 'cash'
-        })
+        body: JSON.stringify(orderData)
       });
 
       const data = await response.json();
+      console.log('Order API Response:', data);
+
       if (data.success) {
         Toast.show({
           type: 'success',
@@ -203,7 +209,6 @@ export default function CheckoutScreen() {
             
             const ordersData = await ordersResponse.json();
             if (ordersData.success) {
-              // Store the active orders count in AsyncStorage for persistence
               await AsyncStorage.setItem('activeOrdersCount', String(ordersData.orders.length));
             }
           } catch (error) {
@@ -215,7 +220,22 @@ export default function CheckoutScreen() {
           router.back();
         }, 1000);
       } else {
-        throw new Error(data.message || 'Failed to place order');
+        // Handle validation errors
+        if (data.errors) {
+          const errorMessages = Object.entries(data.errors)
+            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .join('\n');
+          
+          Toast.show({
+            type: 'error',
+            text1: 'Validation Error',
+            text2: errorMessages || 'Please check all required fields',
+            position: 'top',
+            visibilityTime: 4000
+          });
+        } else {
+          throw new Error(data.message || 'Failed to place order');
+        }
       }
     } catch (error) {
       console.error('Place order error:', error);
@@ -223,7 +243,8 @@ export default function CheckoutScreen() {
         type: 'error',
         text1: 'Error',
         text2: error.message || 'Failed to place order. Please try again.',
-        position: 'top'
+        position: 'top',
+        visibilityTime: 3000
       });
     } finally {
       setIsLoading(false);

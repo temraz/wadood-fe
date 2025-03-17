@@ -84,18 +84,46 @@ export default function ServiceCheckoutScreen() {
         return;
       }
 
-      // If service is at shop (is_at_home = 0), use address_id = 0
-      // Otherwise, require a selected address
-      const addressId = params.is_at_home === 0 ? 0 : selectedLocation?.id;
+      // First check if it's at shop service
+      const isAtShop = parseInt(params.is_at_home) === 0;
       
-      if (params.is_at_home === 1 && !addressId) {
+      // If at shop, force address_id to 0, otherwise use selected location
+      const addressId = isAtShop ? 0 : selectedLocation?.id;
+      
+      // Only validate address for home services
+      if (!isAtShop && !selectedLocation) {
         Toast.show({
           type: 'error',
-          text1: t.serviceCheckout.errors.addressRequired || 'Please select a delivery address',
+          text1: 'Address Required',
+          text2: 'Please select a delivery address to continue',
           position: 'top',
+          visibilityTime: 3000,
+          props: {
+            icon: 'location-outline'
+          }
         });
+        setIsLoading(false);
         return;
       }
+
+      const requestBody = {
+        cart_id: parseInt(params.cart_id),
+        address_id: addressId,
+        payment_method: 'cash',
+        staff_id: parseInt(params.staff_id)
+      };
+
+      console.log(`
+=== Service Order Request ===
+Request details:
+- is_at_home: ${params.is_at_home}
+- is_at_shop: ${isAtShop}
+- selected location: ${JSON.stringify(selectedLocation)}
+- computed address_id: ${addressId}
+- staff_id: ${params.staff_id}
+- cart_id: ${params.cart_id}
+=========================
+      `);
 
       const response = await fetch(`${API_BASE_URL}/api/orders`, {
         method: 'POST',
@@ -104,17 +132,13 @@ export default function ServiceCheckoutScreen() {
           'Authorization': `Bearer ${token}`,
           'Accept-Language': language,
         },
-        body: JSON.stringify({
-          cart_id: parseInt(params.cart_id),
-          address_id: addressId,
-          payment_method: 'cash'
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();
+      console.log('Order API Response:', data);
       
       if (data.success) {
-        // Show success message
         Toast.show({
           type: 'success',
           text1: 'Order Placed Successfully',
@@ -123,13 +147,25 @@ export default function ServiceCheckoutScreen() {
           visibilityTime: 2000,
         });
 
-        // Wait for toast to be visible before navigation
         setTimeout(() => {
-          // Navigate back to home screen
           router.replace('/home');
         }, 2000);
       } else {
-        throw new Error(data.message || 'Failed to place order');
+        if (data.errors) {
+          const errorMessages = Object.entries(data.errors)
+            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .join('\n');
+          
+          Toast.show({
+            type: 'error',
+            text1: 'Validation Error',
+            text2: errorMessages || 'Please check all required fields',
+            position: 'top',
+            visibilityTime: 4000
+          });
+        } else {
+          throw new Error(data.message || 'Failed to place order');
+        }
       }
     } catch (error) {
       console.error('Order creation error:', error);
@@ -138,6 +174,7 @@ export default function ServiceCheckoutScreen() {
         text1: 'Failed to place order',
         text2: error.message,
         position: 'top',
+        visibilityTime: 3000
       });
     } finally {
       setIsLoading(false);

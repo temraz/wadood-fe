@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -103,7 +103,7 @@ const MOCK_PRODUCT_ORDERS = [
   }
 ];
 
-const HOURS = Array.from({ length: 13 }, (_, i) => i + 9); // 9 AM to 9 PM
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 9); // 9 AM to 11 PM
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DAY_WIDTH = SCREEN_WIDTH * 0.8;
 
@@ -123,6 +123,7 @@ export default function PartnerHomeScreen() {
   const [providerId, setProviderId] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [provider, setProvider] = useState(null);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [selectedPendingOrder, setSelectedPendingOrder] = useState(null);
@@ -132,6 +133,7 @@ export default function PartnerHomeScreen() {
   const [selectedStaffMember, setSelectedStaffMember] = useState(null);
   const [showStaffFilter, setShowStaffFilter] = useState(false);
   const [selectedStaffFilter, setSelectedStaffFilter] = useState(null);
+  const [selectedStaffForOrder, setSelectedStaffForOrder] = useState(null);
 
   useEffect(() => {
     loadProviderId();
@@ -140,47 +142,83 @@ export default function PartnerHomeScreen() {
     }
   }, [userRole]);
 
+  // Effect for initial orders fetch
   useEffect(() => {
     if (providerId) {
-      console.log('Fetching orders with selectedStaffFilter:', selectedStaffFilter); // Add debug log
+      console.log('Fetching orders with selectedStaffFilter:', selectedStaffFilter);
       fetchOrders();
     }
   }, [providerId, selectedStaffFilter]);
+
+  // Separate effect for pending orders polling
+  useEffect(() => {
+    if (providerId && userRole === 'admin') {
+      // Initial fetch
+      fetchPendingOrders();
+
+      // Set up polling interval
+      const interval = setInterval(fetchPendingOrders, 5000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(interval);
+    }
+  }, [providerId, userRole]);
 
   useEffect(() => {
     if (allOrders.services.length > 0 || allOrders.products.length > 0) {
       const selectedDateStr = formatDateForAPI(selectedDate);
       const selectedDateOrders = (activeTab === 'services' ? allOrders.services : allOrders.products)
         .filter(order => {
-          console.log(`Order ID: ${order.id}, Scheduled At: ${order.scheduled_at}`);
           const orderDate = new Date(order.scheduled_at);
-          // Get dates in local timezone
-          const orderLocalDate = new Date(orderDate.getTime());
-          const selectedLocalDate = new Date(selectedDate.getTime());
+          // Get the UTC date components
+          const orderDay = orderDate.getUTCDate();
+          const orderMonth = orderDate.getUTCMonth();
+          const orderYear = orderDate.getUTCFullYear();
           
-          // Compare dates in local timezone
-          const orderDateStr = orderLocalDate.toLocaleDateString();
-          const selectedDateStr = selectedLocalDate.toLocaleDateString();
+          // Get the selected date components
+          const selectedDay = selectedDate.getDate();
+          const selectedMonth = selectedDate.getMonth();
+          const selectedYear = selectedDate.getFullYear();
           
-          console.log(`Order ID: ${order.id}, Order Local Date: ${orderDateStr}, Selected Date: ${selectedDateStr}`);
-          return orderDateStr === selectedDateStr;
+          // Compare the date components
+          return orderDay === selectedDay && 
+                 orderMonth === selectedMonth && 
+                 orderYear === selectedYear;
         });
       setOrders(selectedDateOrders);
     }
   }, [selectedDate, activeTab, allOrders]);
 
+  // Add useEffect to fetch provider data
   useEffect(() => {
-    if (allOrders.services.length > 0 || allOrders.products.length > 0) {
-      const pending = [...allOrders.services, ...allOrders.products].filter(
-        order => order.status === 'PENDING'
-      );
-      setPendingOrders(pending);
-      if (pending.length > 0 && !showPendingModal && userRole === 'admin') {
-        setShowPendingModal(true);
-        setSelectedPendingOrder(pending[0]);
+    const fetchProviderData = async () => {
+      if (providerId) {
+        try {
+          const token = await ensureValidToken(language);
+          if (!token) {
+            router.replace('/login');
+            return;
+          }
+
+          const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept-Language': language
+            }
+          });
+
+          const data = await response.json();
+          if (data.success) {
+            setProvider(data.data.provider);
+          }
+        } catch (error) {
+          console.error('Error fetching provider data:', error);
+        }
       }
-    }
-  }, [allOrders, userRole]);
+    };
+
+    fetchProviderData();
+  }, [providerId, language]);
 
   const loadProviderId = async () => {
     try {
@@ -223,8 +261,12 @@ export default function PartnerHomeScreen() {
       });
       
       const data = await response.json();
+      console.log('Staff list response:', data); // Debug log
       if (data.success) {
-        setStaffList(data.data.staff || []);
+        // Make sure we're using the correct staff data structure
+        const staffData = data.data.staff || [];
+        console.log('Staff data:', staffData); // Debug log
+        setStaffList(staffData);
       } else {
         Toast.show({
           type: 'error',
@@ -414,13 +456,13 @@ export default function PartnerHomeScreen() {
   const formatTime = (hour, minutes = '00') => {
     const period = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    return `${displayHour}:${minutes}${period}`;
+    return `${displayHour}:${minutes} ${period}`;
   };
 
   const renderTimeSlot = (hour) => {
     const orders = getOrdersForTimeRange(hour);
     const orderCount = orders.length;
-    const orderWidth = orderCount > 1 ? (100 / orderCount) - 2 : 100; // 2% gap between orders
+    const orderWidth = orderCount > 1 ? (100 / orderCount) - 2 : 100;
 
     return (
       <View key={hour} style={styles.timeSlot}>
@@ -467,8 +509,9 @@ export default function PartnerHomeScreen() {
                         {formatTime(orderHour, orderMinutes.toString().padStart(2, '0'))}
                       </Text>
                       <Text style={[styles.providerName, { flex: 1 }]} numberOfLines={1}>
-                        {order.provider_name}
+                        {order.user_name}
                       </Text>
+                      <Text style={styles.durationText}>{totalDuration}m</Text>
                     </View>
                   ) : (
                     <>
@@ -480,9 +523,7 @@ export default function PartnerHomeScreen() {
                         <Text style={[styles.providerName, { flex: 1 }]} numberOfLines={1}>
                           {order.user_name}
                         </Text>
-                        {order.order_type === 'service' && (
-                          <Text style={styles.durationText}>{totalDuration}m</Text>
-                        )}
+                        <Text style={styles.durationText}>{totalDuration}m</Text>
                       </View>
                       <View style={styles.orderContent}>
                         <View style={styles.servicesList}>
@@ -617,119 +658,32 @@ export default function PartnerHomeScreen() {
     const ordersForType = activeTab === 'services' ? allOrders.services : allOrders.products;
     return ordersForType.filter(order => {
       const orderDate = new Date(order.scheduled_at);
-      // Get dates in local timezone
-      const orderLocalDate = new Date(orderDate.getTime());
-      const selectedLocalDate = new Date(date.getTime());
+      // Get the UTC date components
+      const orderDay = orderDate.getUTCDate();
+      const orderMonth = orderDate.getUTCMonth();
+      const orderYear = orderDate.getUTCFullYear();
       
-      // Compare dates in local timezone
-      const orderDateStr = orderLocalDate.toLocaleDateString();
-      const selectedDateStr = selectedLocalDate.toLocaleDateString();
+      // Get the target date components
+      const targetDay = date.getDate();
+      const targetMonth = date.getMonth();
+      const targetYear = date.getFullYear();
       
-      return orderDateStr === selectedDateStr;
+      // Compare the date components
+      return orderDay === targetDay && 
+             orderMonth === targetMonth && 
+             orderYear === targetYear;
     }).length;
   };
 
   const handleAcceptButtonClick = async () => {
     console.log('Accept button clicked');
-    console.log('Order type:', selectedPendingOrder?.order_type);
-
-    // Check order type first
-    if (selectedPendingOrder?.order_type === 'product') {
-      console.log('Product order - directly accepting without staff');
-      handleAcceptOrder();
-      return;
-    }
-
-    // Only proceed with staff selection for service orders
-    console.log('Service order - proceeding with staff selection');
-    setIsStaffLoading(true);
-    
     try {
-      // Close the pending order modal first
-      setShowPendingModal(false);
-      
-      await fetchStaffList();
-      setShowStaffModal(true);
-    } catch (error) {
-      console.error('Error in handleAcceptButtonClick:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to load staff list'
-      });
-      // If there's an error, show the pending modal again
-      setShowPendingModal(true);
-    } finally {
-      setIsStaffLoading(false);
-    }
-  };
-
-  const handleAcceptOrder = async () => {
-    try {
-      console.log('Accepting order:', selectedPendingOrder?.id);
-      console.log('Order type:', selectedPendingOrder?.order_type);
-      
       setIsLoading(true);
       const token = await ensureValidToken(language);
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      // For product orders, directly accept without staff
-      if (selectedPendingOrder?.order_type === 'product') {
-        console.log('Processing product order acceptance');
-        const response = await fetch(`${API_BASE_URL}/api/orders/provider/${selectedPendingOrder.id}/status`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept-Language': language,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            status: 'ACCEPTED'
-          })
-        });
-
-        // Log the raw response for debugging
-        const responseText = await response.text();
-        console.log('Raw API Response:', responseText);
-
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error('Failed to parse response:', parseError);
-          throw new Error(`Invalid response from server: ${responseText}`);
-        }
-
-        if (data.success) {
-          console.log('Product order accepted successfully');
-          Toast.show({
-            type: 'success',
-            text1: 'Order Accepted',
-            text2: 'Order has been accepted successfully',
-            position: 'top',
-            visibilityTime: 3000,
-          });
-          setPendingOrders(prev => prev.filter(order => order.id !== selectedPendingOrder.id));
-          setShowPendingModal(false);
-          fetchOrders();
-        } else {
-          console.error('Accept order API returned error:', data);
-          Toast.show({
-            type: 'error',
-            text1: data.message || 'Failed to accept order'
-          });
-          setShowPendingModal(true);
-        }
-        return;
-      }
-
-      // For service orders, handle with staff selection
-      console.log('Starting handleAcceptOrder with staffId:', selectedStaffMember?.id);
       
-      const response = await fetch(`${API_BASE_URL}/api/orders/provider/${selectedPendingOrder.id}/status`, {
+      const url = `${API_BASE_URL}/api/orders/provider/${selectedPendingOrder.id}/status`;
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -737,24 +691,82 @@ export default function PartnerHomeScreen() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          status: 'ACCEPTED',
-          staff_id: selectedStaffMember.id
+          status: 'ACCEPTED'
         })
       });
 
       const data = await response.json();
-      console.log('Accept service order API response:', data);
+      if (data.success) {
+        console.log('Order accepted successfully');
+        Toast.show({
+          type: 'success',
+          text1: 'Order Accepted',
+          text2: 'Order has been accepted successfully',
+          position: 'top',
+          visibilityTime: 3000,
+        });
+        setPendingOrders(prev => prev.filter(order => order.id !== selectedPendingOrder.id));
+        setShowPendingModal(false);
+        fetchOrders(); // Refresh orders list
+      } else {
+        console.error('Accept order API returned error:', data);
+        Toast.show({
+          type: 'error',
+          text1: data.message || 'Failed to accept order'
+        });
+      }
+    } catch (error) {
+      console.error('Error accepting order:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'Failed to accept order',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  const handleAcceptOrder = async () => {
+    try {
+      setIsLoading(true);
+      const token = await ensureValidToken(language);
+      
+      const url = `${API_BASE_URL}/api/orders/provider/${selectedPendingOrder.id}/status`;
+      
+      // This function is now only called for service orders
+      const requestBody = {
+        status: 'ACCEPTED',
+        staff_id: selectedStaffForOrder.id
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept-Language': language,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
       if (data.success) {
         console.log('Service order accepted successfully');
         Toast.show({
           type: 'success',
-          text1: 'Order accepted successfully'
+          text1: 'Order Accepted',
+          text2: 'Order has been accepted successfully',
+          position: 'top',
+          visibilityTime: 3000,
         });
         setPendingOrders(prev => prev.filter(order => order.id !== selectedPendingOrder.id));
-        setShowStaffModal(false);
-        setSelectedStaffMember(null);
-        fetchOrders();
+        setShowPendingModal(false);
+        setShowStaffModal(false); // Close staff modal
+        setSelectedStaffForOrder(null); // Reset selected staff
+        fetchOrders(); // Refresh orders list
       } else {
         console.error('Accept order API returned error:', data);
         Toast.show({
@@ -849,69 +861,129 @@ export default function PartnerHomeScreen() {
             {selectedPendingOrder && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 <View style={styles.orderTypeTag}>
-                  <Ionicons 
-                    name={selectedPendingOrder.order_type === 'service' ? 'cut' : 'cube'} 
-                    size={16} 
-                    color="#86A8E7" 
-                  />
-                  <Text style={styles.orderTypeText}>
-                    {selectedPendingOrder.order_type === 'service' ? 'Service Order' : 'Product Order'}
-                  </Text>
+                  <LinearGradient
+                    colors={['#86A8E7', '#7F7FD5']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.orderTypeGradient}
+                  >
+                    <Ionicons 
+                      name={selectedPendingOrder.order_type === 'service' ? 'cut' : 'cube'} 
+                      size={16} 
+                      color="#fff" 
+                    />
+                    <Text style={styles.orderTypeText}>
+                      {selectedPendingOrder.order_type === 'service' ? 'Service Order' : 'Product Order'} #{selectedPendingOrder.id}
+                    </Text>
+                  </LinearGradient>
                 </View>
 
                 <View style={styles.customerSection}>
-                  <View style={styles.customerAvatar}>
+                  <LinearGradient
+                    colors={['#86A8E7', '#7F7FD5']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.customerAvatar}
+                  >
                     <Text style={styles.avatarText}>
                       {selectedPendingOrder.user_name?.charAt(0).toUpperCase()}
                     </Text>
-                  </View>
+                  </LinearGradient>
                   <View style={styles.customerInfo}>
                     <Text style={styles.customerName}>{selectedPendingOrder.user_name}</Text>
                     
                     <View style={styles.dateTimeContainer}>
-                      <Ionicons 
-                        name="calendar-outline" 
-                        size={16} 
-                        color="#666" 
-                        style={styles.dateTimeIcon}
-                      />
-                      <Text style={styles.dateTimeText}>
-                        {new Date(selectedPendingOrder.scheduled_at).toLocaleDateString(
-                          language === 'ar' ? 'ar-SA' : 'en-US',
-                          { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
-                        )}
-                      </Text>
+                      <LinearGradient
+                        colors={['rgba(134,168,231,0.15)', 'rgba(127,127,213,0.15)']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.dateTimeGradient}
+                      >
+                        <Ionicons 
+                          name="calendar-outline" 
+                          size={16} 
+                          color="#86A8E7" 
+                          style={styles.dateTimeIcon}
+                        />
+                        <Text style={styles.dateTimeText}>
+                          {(() => {
+                            if (!selectedPendingOrder?.scheduled_at) return '--/--/----';
+                            const date = new Date(selectedPendingOrder.scheduled_at);
+                            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                            const dayName = days[date.getUTCDay()];
+                            const day = date.getUTCDate().toString().padStart(2, '0');
+                            const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+                            const year = date.getUTCFullYear();
+                            
+                            return `${dayName}, ${day}/${month}/${year}`;
+                          })()}
+                        </Text>
+                      </LinearGradient>
                     </View>
                     
                     <View style={styles.dateTimeContainer}>
-                      <Ionicons 
-                        name="time-outline" 
-                        size={16} 
-                        color="#666" 
-                        style={styles.dateTimeIcon}
-                      />
-                      <Text style={styles.dateTimeText}>
-                        {new Date(selectedPendingOrder.scheduled_at).toLocaleTimeString(
-                          language === 'ar' ? 'ar-SA' : 'en-US',
-                          { hour: '2-digit', minute: '2-digit', hour12: true }
-                        )}
-                      </Text>
+                      <LinearGradient
+                        colors={['rgba(134,168,231,0.15)', 'rgba(127,127,213,0.15)']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.dateTimeGradient}
+                      >
+                        <Ionicons 
+                          name="time-outline" 
+                          size={16} 
+                          color="#86A8E7" 
+                          style={styles.dateTimeIcon}
+                        />
+                        <Text style={styles.dateTimeText}>
+                          {(() => {
+                            const scheduledTime = selectedPendingOrder?.scheduled_at;
+                            if (!scheduledTime) return '--:-- --';
+                            
+                            try {
+                              // Parse the UTC time directly from the ISO string
+                              const date = new Date(scheduledTime);
+                              const hours = date.getUTCHours();
+                              const minutes = date.getUTCMinutes();
+                              
+                              // Convert to 12-hour format
+                              const period = hours >= 12 ? 'PM' : 'AM';
+                              const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                              
+                              return `${displayHour}:${minutes.toString().padStart(2, '0')} ${period}`;
+                            } catch (error) {
+                              console.error('Error formatting time:', error);
+                              return '--:-- --';
+                            }
+                          })()}
+                        </Text>
+                      </LinearGradient>
                     </View>
 
                     <View style={styles.locationContainer}>
-                      <TouchableOpacity 
-                        style={styles.goToLocationButton}
-                        onPress={() => {
-                          const url = `https://www.google.com/maps/search/?api=1&query=${selectedPendingOrder.latitude},${selectedPendingOrder.longitude}`;
-                          Linking.openURL(url);
-                        }}
-                      >
-                        <Ionicons name="location-outline" size={20} color="#fff" />
-                        <Text style={styles.goToLocationText}>Go to Location</Text>
-                        <View style={styles.locationArrow}>
-                          <Ionicons name="arrow-forward" size={16} color="#fff" />
-                        </View>
-                      </TouchableOpacity>
+                      {selectedPendingOrder.address_id === 0 ? (
+                        <LinearGradient
+                          colors={['#96C93D', '#7FBA3D']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={[styles.goToLocationButton, styles.inShopButton]}
+                        >
+                          <Ionicons name="storefront-outline" size={20} color="#fff" />
+                          <Text style={styles.goToLocationText}>In Shop</Text>
+                        </LinearGradient>
+                      ) : (
+                        <LinearGradient
+                          colors={['#86A8E7', '#7F7FD5']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.goToLocationButton}
+                        >
+                          <Ionicons name="location-outline" size={20} color="#fff" />
+                          <Text style={styles.goToLocationText}>Go to Location</Text>
+                          <View style={styles.locationArrow}>
+                            <Ionicons name="arrow-forward" size={16} color="#fff" />
+                          </View>
+                        </LinearGradient>
+                      )}
                     </View>
                   </View>
                 </View>
@@ -922,16 +994,22 @@ export default function PartnerHomeScreen() {
                     <View key={index} style={styles.itemRow}>
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemName}>{item.name}</Text>
-                        {selectedPendingOrder.order_type === 'service' && (
-                          <View style={styles.durationTag}>
-                            <Ionicons name="time-outline" size={14} color="#86A8E7" />
-                            <Text style={styles.durationText}>{item.duration} min</Text>
-                          </View>
-                        )}
                       </View>
-                      {selectedPendingOrder.order_type === 'product' && (
+                      {selectedPendingOrder.order_type === 'service' ? (
+                        <LinearGradient
+                          colors={['rgba(134,168,231,0.15)', 'rgba(127,127,213,0.15)']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.durationTag}
+                        >
+                          <Ionicons name="time-outline" size={14} color="#86A8E7" />
+                          <Text style={styles.durationText}>{item.duration} min</Text>
+                        </LinearGradient>
+                      ) : (
                         <View style={styles.priceInfo}>
-                          <Text style={styles.quantityText}>x{item.quantity}</Text>
+                          <View style={styles.quantityBadge}>
+                            <Text style={styles.quantityText}>x{item.quantity}</Text>
+                          </View>
                           <Text style={styles.priceText}>{item.price} SAR</Text>
                         </View>
                       )}
@@ -946,10 +1024,15 @@ export default function PartnerHomeScreen() {
                   </View>
                 )}
 
-                <View style={styles.totalCard}>
-                  <Text style={styles.totalText}>Total Amount</Text>
-                  <Text style={styles.totalAmount}>{selectedPendingOrder.total_amount} SAR</Text>
-                </View>
+                <LinearGradient
+                  colors={['#86A8E7', '#7F7FD5']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.totalCard}
+                >
+                  <Text style={[styles.totalText, { color: '#fff' }]}>Total Amount</Text>
+                  <Text style={[styles.totalAmount, { color: '#fff', fontSize: 24 }]}>{selectedPendingOrder.total_amount} SAR</Text>
+                </LinearGradient>
               </ScrollView>
             )}
 
@@ -982,7 +1065,7 @@ export default function PartnerHomeScreen() {
       animationType="slide"
       onRequestClose={() => {
         setShowStaffModal(false);
-        setSelectedStaffMember(null);
+        setSelectedStaffForOrder(null);
         setShowPendingModal(true);
       }}
     >
@@ -994,7 +1077,7 @@ export default function PartnerHomeScreen() {
             <TouchableOpacity 
               onPress={() => {
                 setShowStaffModal(false);
-                setSelectedStaffMember(null);
+                setSelectedStaffForOrder(null);
                 setShowPendingModal(true);
               }}
               style={styles.closeButton}
@@ -1010,40 +1093,17 @@ export default function PartnerHomeScreen() {
           ) : (
             <>
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <TouchableOpacity
-                  style={[
-                    styles.staffCard,
-                    !selectedStaffFilter && styles.selectedStaffCard
-                  ]}
-                  onPress={() => {
-                    console.log('Clearing staff filter'); // Add debug log
-                    setSelectedStaffFilter(null);
-                    setShowStaffFilter(false);
-                  }}
-                >
-                  <View style={styles.staffAvatar}>
-                    <Ionicons name="people" size={20} color="#fff" />
-                  </View>
-                  <View style={styles.staffInfo}>
-                    <Text style={styles.staffName}>All Staff</Text>
-                    <Text style={styles.staffRole}>View all orders</Text>
-                  </View>
-                  {!selectedStaffFilter && (
-                    <Ionicons name="checkmark-circle" size={24} color="#86A8E7" />
-                  )}
-                </TouchableOpacity>
-
                 {staffList.map((staff) => (
                   <TouchableOpacity
                     key={staff.id}
                     style={[
                       styles.staffCard,
-                      selectedStaffFilter?.id === staff.id && styles.selectedStaffCard
+                      selectedStaffForOrder?.id === staff.id && styles.selectedStaffCard
                     ]}
                     onPress={() => {
-                      console.log('Selecting staff:', staff); // Add debug log
-                      setSelectedStaffFilter(staff);
-                      setShowStaffFilter(false);
+                      console.log('Selected staff member:', staff); // Debug log
+                      console.log('Staff ID:', staff.id); // Debug log
+                      setSelectedStaffForOrder(staff);
                     }}
                   >
                     <View style={styles.staffAvatar}>
@@ -1055,7 +1115,7 @@ export default function PartnerHomeScreen() {
                       <Text style={styles.staffName}>{staff.name}</Text>
                       <Text style={styles.staffRole}>{staff.role}</Text>
                     </View>
-                    {selectedStaffFilter?.id === staff.id && (
+                    {selectedStaffForOrder?.id === staff.id && (
                       <Ionicons name="checkmark-circle" size={24} color="#86A8E7" />
                     )}
                   </TouchableOpacity>
@@ -1066,10 +1126,10 @@ export default function PartnerHomeScreen() {
                   style={[
                     styles.actionButton,
                     styles.acceptButton,
-                    !selectedStaffFilter && styles.disabledButton
+                    !selectedStaffForOrder && styles.disabledButton
                   ]}
                   onPress={handleAcceptOrder}
-                  disabled={!selectedStaffFilter}
+                  disabled={!selectedStaffForOrder}
                 >
                   <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
                   <Text style={styles.actionButtonText}>Confirm Assignment</Text>
@@ -1081,6 +1141,68 @@ export default function PartnerHomeScreen() {
       </View>
     </Modal>
   );
+
+  const fetchPendingOrders = async () => {
+    try {
+      const token = await ensureValidToken(language);
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
+
+      let apiUrl = `${API_BASE_URL}/api/orders/provider`;
+      const queryParams = [
+        `provider_id=${providerId}`,
+        'status=PENDING'
+      ];
+
+      apiUrl += `?${queryParams.join('&')}`;
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept-Language': language
+        }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        const pendingOrdersList = data.data.orders || [];
+        setPendingOrders(pendingOrdersList);
+        
+        // Show modal for first pending order if not already showing
+        if (pendingOrdersList.length > 0 && !showPendingModal && userRole === 'admin') {
+          setShowPendingModal(true);
+          setSelectedPendingOrder(pendingOrdersList[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pending orders:', error);
+    }
+  };
+
+  const getAvailableHours = useCallback(() => {
+    // If no provider data, return default hours (9 AM to 11 PM)
+    if (!provider?.open_time || !provider?.close_time) {
+      return HOURS;
+    }
+    
+    const openHour = parseInt(provider.open_time.split(':')[0]);
+    const closeHour = parseInt(provider.close_time.split(':')[0]);
+    
+    // Ensure closeHour doesn't exceed 23 (11 PM)
+    const maxCloseHour = 23;
+    const adjustedCloseHour = Math.min(closeHour < openHour ? closeHour + 24 : closeHour, maxCloseHour);
+    
+    const numHours = adjustedCloseHour - openHour;
+    
+    const hours = Array.from({ length: numHours + 1 }, (_, i) => {
+      const hour = (openHour + i) % 24;
+      return hour;
+    });
+    
+    return hours;
+  }, [provider]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -1890,6 +2012,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 8,
+    maxHeight: '90%',
   },
   bottomSheetHeader: {
     alignItems: 'center',
@@ -1906,48 +2029,60 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#2A363B',
+    letterSpacing: 0.5,
   },
   closeButton: {
     position: 'absolute',
     right: 16,
     top: 16,
-    padding: 4,
+    padding: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
   },
   modalBody: {
     padding: 16,
   },
   orderTypeTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
     alignSelf: 'flex-start',
     marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  orderTypeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   orderTypeText: {
     fontSize: 14,
-    color: '#86A8E7',
+    color: '#fff',
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 8,
   },
   customerSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 24,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#fff',
     padding: 16,
     borderRadius: 16,
+    shadowColor: '#7F7FD5',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   customerAvatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#86A8E7',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -1955,22 +2090,24 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 20,
     color: '#fff',
-    fontWeight: '600',
-  },
-  customerInfo: {
-    flex: 1,
+    fontWeight: '700',
   },
   dateTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 12,
   },
+  dateTimeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+  },
   dateTimeIcon: {
-    marginRight: 6,
+    marginRight: 8,
   },
   dateTimeText: {
     fontSize: 14,
-    color: '#666',
+    color: '#2A363B',
+    fontWeight: '500',
   },
   locationContainer: {
     marginTop: 12,
@@ -1980,16 +2117,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#86A8E7',
     justifyContent: 'center',
-    shadowColor: '#86A8E7',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   goToLocationText: {
     color: '#fff',
@@ -2003,16 +2131,25 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   itemsCard: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
+    shadowColor: '#7F7FD5',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#2A363B',
-    marginBottom: 12,
+    marginBottom: 16,
+    letterSpacing: 0.5,
   },
   itemRow: {
     flexDirection: 'row',
@@ -2020,7 +2157,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: 'rgba(134,168,231,0.12)',
   },
   itemInfo: {
     flex: 1,
@@ -2028,20 +2165,29 @@ const styles = StyleSheet.create({
   durationTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 12,
-    alignSelf: 'flex-start',
+    gap: 6,
   },
   priceInfo: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   notesCard: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
+    shadowColor: '#7F7FD5',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   notesText: {
     fontSize: 14,
@@ -2049,30 +2195,32 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   totalCard: {
-    backgroundColor: '#EEF2FF',
     borderRadius: 16,
-    padding: 16,
+    padding: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
   },
   totalText: {
-    fontSize: 16,
-    color: '#2A363B',
+    fontSize: 18,
     fontWeight: '600',
+  },
+  totalAmount: {
+    fontSize: 24,
+    fontWeight: '700',
   },
   bottomSheetFooter: {
     flexDirection: 'row',
     padding: 16,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: 'rgba(134,168,231,0.12)',
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2088,6 +2236,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
   staffCard: {
     flexDirection: 'row',
@@ -2140,5 +2289,9 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#f0f0f0',
+  },
+  inShopButton: {
+    backgroundColor: '#96C93D',
+    opacity: 0.9,
   },
 }); 

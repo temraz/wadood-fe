@@ -207,6 +207,51 @@ export default function ProfileMenu({ visible, onClose, onLanguageChange }) {
               <Text style={[styles.menuText, isRTL && styles.rtlMenuText]}>Profile</Text>
             </TouchableOpacity>
 
+            {userData.role === 'driver' && (
+              <TouchableOpacity 
+                style={[styles.menuItem, isRTL && styles.rtlRow]}
+                onPress={() => {
+                  onClose();
+                  router.push('/orders');
+                }}
+              >
+                <Ionicons name="bicycle-outline" size={24} color="#86A8E7" />
+                <Text style={[styles.menuText, isRTL && styles.rtlMenuText]}>
+                  {t.common.menu.myDeliveries || 'My Deliveries'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {userData.role === 'user' && (
+              <>
+                <TouchableOpacity 
+                  style={[styles.menuItem, isRTL && styles.rtlRow]}
+                  onPress={() => {
+                    onClose();
+                    router.push('/orders');
+                  }}
+                >
+                  <Ionicons name="receipt-outline" size={24} color="#86A8E7" />
+                  <Text style={[styles.menuText, isRTL && styles.rtlMenuText]}>
+                    {t.common.menu.myOrders || 'My Orders'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuItem, isRTL && styles.rtlRow]}
+                  onPress={() => {
+                    onClose();
+                    router.push('/servicesHome');
+                  }}
+                >
+                  <Ionicons name="paw-outline" size={24} color="#86A8E7" />
+                  <Text style={[styles.menuText, isRTL && styles.rtlMenuText]}>
+                    {t.common.menu.services || 'Services'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             {userData.role === 'admin' && (
               <>
                 <TouchableOpacity 
@@ -254,6 +299,19 @@ export default function ProfileMenu({ visible, onClose, onLanguageChange }) {
                 </TouchableOpacity>
               </>
             )}
+
+            <TouchableOpacity 
+              style={[styles.menuItem, isRTL && styles.rtlRow]}
+              onPress={() => {
+                onClose();
+                router.push('/privacy-policy');
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={24} color="#86A8E7" />
+              <Text style={[styles.menuText, isRTL && styles.rtlMenuText]}>
+                {t.common.menu.privacyPolicy || 'Privacy Policy'}
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={[styles.menuItem, isRTL && styles.rtlRow]} onPress={toggleLanguage}>
               <Ionicons name="language-outline" size={24} color="#86A8E7" />

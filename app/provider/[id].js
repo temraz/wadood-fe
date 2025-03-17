@@ -82,6 +82,10 @@ export default function ProviderScreen() {
   const [selectedServices, setSelectedServices] = useState([]);
   const [serviceType, setServiceType] = useState('home');
   const [isLoading, setIsLoading] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(false);
+  const [unavailableHours, setUnavailableHours] = useState([]);
 
   const totalPrice = useMemo(() => {
     return selectedServices.reduce((sum, serviceId) => {
@@ -115,8 +119,73 @@ export default function ProviderScreen() {
     setSelectedTime(null);
   };
 
+  const fetchStaffList = async () => {
+    try {
+      setIsLoadingStaff(true);
+      const token = await AsyncStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/api/providers/${provider.id}/staff`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept-Language': language,
+        }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setStaffList(data.data.staff);
+      } else {
+        console.error('Failed to fetch staff:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    } finally {
+      setIsLoadingStaff(false);
+    }
+  };
+
+  const fetchUnavailableHours = async (staffId, date) => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${API_BASE_URL}/api/providers/staff/unavailable-slots`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept-Language': language,
+        },
+        body: JSON.stringify({
+          staff_id: staffId,
+          date: date
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setUnavailableHours(data.data.unavailable_hours || []);
+      }
+    } catch (error) {
+      console.error('Error fetching unavailable hours:', error);
+      setUnavailableHours([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isDateTimeVisible) {
+      fetchStaffList();
+    }
+  }, [isDateTimeVisible]);
+
+  useEffect(() => {
+    if (selectedStaff && selectedDate) {
+      fetchUnavailableHours(selectedStaff.id, selectedDate);
+    }
+  }, [selectedStaff, selectedDate]);
+
   const handleConfirm = async () => {
-    if (selectedDate && selectedTime) {
+    if (selectedDate && selectedTime && selectedStaff) {
       setIsLoading(true);
       try {
         const token = await AsyncStorage.getItem('token');
@@ -129,11 +198,9 @@ export default function ProviderScreen() {
           return;
         }
 
-        // Format the date and time for the API
         const orderDateTime = `${selectedDate} ${selectedTime}:00`;
         let cartId = null;
 
-        // Add each selected service to cart
         for (const serviceId of selectedServices) {
           const service = provider.services.find(s => s.service.id === serviceId);
           const price = serviceType === 'shop' ? service.price_at_shop : service.price_at_home;
@@ -150,7 +217,8 @@ export default function ProviderScreen() {
               service_id: serviceId,
               quantity: 1,
               price: price,
-              order_date: orderDateTime
+              order_date: orderDateTime,
+              staff_id: selectedStaff.id
             })
           });
 
@@ -159,7 +227,6 @@ export default function ProviderScreen() {
             throw new Error(data.message || 'Failed to add service to cart');
           }
 
-          // Store the cart_id from the first successful response
           if (!cartId) {
             cartId = data.cart_id;
           }
@@ -167,7 +234,6 @@ export default function ProviderScreen() {
 
         handleCloseDateTime();
         
-        // Navigate to checkout with all necessary params
         router.push({
           pathname: '/serviceCheckout',
           params: {
@@ -187,7 +253,9 @@ export default function ProviderScreen() {
             time: selectedTime,
             service_type: serviceType,
             is_at_home: serviceType === 'home' ? 1 : 0,
-            cart_id: cartId
+            cart_id: cartId,
+            staff_id: selectedStaff.id,
+            staff_name: selectedStaff.name,
           }
         });
       } catch (error) {
@@ -201,17 +269,66 @@ export default function ProviderScreen() {
       } finally {
         setIsLoading(false);
       }
+    } else {
+      Toast.show({
+        type: 'error',
+        text1: 'Please select date, time and staff member',
+        position: 'top',
+      });
     }
   };
 
+  const getAvailableHours = useCallback(() => {
+    console.log('Provider data:', {
+      open_time: provider.open_time,
+      close_time: provider.close_time,
+      is_open: provider.is_open
+    });
+    
+    if (!provider?.open_time || !provider?.close_time) {
+      console.log('Missing time data');
+      return [];
+    }
+    
+    const openHour = parseInt(provider.open_time.split(':')[0]);
+    const closeHour = parseInt(provider.close_time.split(':')[0]);
+    
+    console.log('Parsed hours:', { openHour, closeHour });
+    
+    const adjustedCloseHour = closeHour < openHour ? closeHour + 24 : closeHour;
+    
+    const numHours = adjustedCloseHour - openHour;
+    
+    console.log('Calculated hours:', { numHours, adjustedCloseHour });
+    
+    const hours = Array.from({ length: numHours + 1 }, (_, i) => {
+      const hour = (openHour + i) % 24;
+      return hour;
+    });
+    
+    console.log('Generated hours:', hours);
+    return hours;
+  }, [provider]);
+
   const getActiveHours = useCallback(() => {
-    return HOURS.filter(hour => {
-      const currentHour = new Date().getHours();
+    const availableHours = getAvailableHours();
+    const currentDate = new Date();
+    const currentHour = currentDate.getHours();
+    
+    console.log('Current hour:', currentHour);
+    console.log('Selected date:', selectedDate);
+    console.log('Today:', new Date().toISOString().split('T')[0]);
+    
+    return availableHours.filter(hour => {
       if (!selectedDate) return hour > currentHour;
       const today = new Date().toISOString().split('T')[0];
-      return selectedDate === today ? hour > currentHour : true;
+      const isToday = selectedDate === today;
+      const isValid = isToday ? hour > currentHour : true;
+      
+      console.log('Hour validation:', { hour, isToday, isValid });
+      return isValid;
     });
-  }, [selectedDate]);
+  }, [selectedDate, getAvailableHours]);
 
   const calendarTheme = useMemo(() => ({
     backgroundColor: '#ffffff',
@@ -352,7 +469,7 @@ export default function ProviderScreen() {
         <TouchableOpacity 
           style={[styles.bookButton, selectedServices.length === 0 && styles.disabledButton]} 
           onPress={handleBookNow}
-          disabled={selectedServices.length === 0 || !provider.is_open}
+          disabled={selectedServices.length === 0 }
         >
           <LinearGradient
             colors={['#86A8E7', '#7F7FD5']}
@@ -361,8 +478,7 @@ export default function ProviderScreen() {
             style={styles.gradient}
           >
             <Text style={styles.bookButtonText}>
-              {!provider.is_open ? 'Currently Closed' : 
-                selectedServices.length > 0 ? `Book (${selectedServices.length} Services)` : 'Book'}
+              {selectedServices.length > 0 ? `Book (${selectedServices.length} Services)` : 'Book'}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -397,6 +513,55 @@ export default function ProviderScreen() {
               theme={calendarTheme}
             />
 
+            <View style={styles.staffSection}>
+              <Text style={styles.sectionTitle}>Select Staff</Text>
+              {isLoadingStaff ? (
+                <ActivityIndicator color="#86A8E7" style={styles.staffLoading} />
+              ) : (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.staffList}
+                >
+                  {staffList.map((staff) => (
+                    <TouchableOpacity
+                      key={staff.id}
+                      style={[
+                        styles.staffCard,
+                        selectedStaff?.id === staff.id && styles.selectedStaffCard
+                      ]}
+                      onPress={() => setSelectedStaff(staff)}
+                    >
+                      <View style={styles.staffImageWrapper}>
+                        {staff.profile_picture_url ? (
+                          <Image
+                            source={{ uri: staff.profile_picture_url }}
+                            style={styles.staffImage}
+                          />
+                        ) : (
+                          <View style={styles.staffImagePlaceholder}>
+                            <Text style={styles.staffInitials}>
+                              {staff.name.charAt(0)}
+                            </Text>
+                          </View>
+                        )}
+                        {selectedStaff?.id === staff.id && (
+                          <View style={styles.staffSelectedIndicator}>
+                            <View style={styles.selectedIconBackground}>
+                              <Ionicons name="checkmark" size={12} color="#fff" />
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.staffName} numberOfLines={1}>
+                        {staff.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
             <View style={styles.timeSection}>
               <Text style={styles.timeSectionTitle}>
                 {t?.dateTimeSheet?.availableTimeSlots || 'Available Time Slots'}
@@ -409,18 +574,22 @@ export default function ProviderScreen() {
                 {getActiveHours().map(hour => {
                   const timeString = `${hour}:00`;
                   const isSelected = selectedTime === timeString;
+                  const isUnavailable = unavailableHours.includes(timeString);
                   return (
                     <TouchableOpacity
                       key={hour}
                       style={[
                         styles.timeSlot,
-                        isSelected && styles.selectedTimeSlot
+                        isSelected && styles.selectedTimeSlot,
+                        isUnavailable && styles.unavailableTimeSlot
                       ]}
-                      onPress={() => setSelectedTime(timeString)}
+                      onPress={() => !isUnavailable && setSelectedTime(timeString)}
+                      disabled={isUnavailable}
                     >
                       <Text style={[
                         styles.timeSlotText,
-                        isSelected && styles.selectedTimeSlotText
+                        isSelected && styles.selectedTimeSlotText,
+                        isUnavailable && styles.unavailableTimeSlotText
                       ]}>
                         {timeString}
                       </Text>
@@ -433,10 +602,10 @@ export default function ProviderScreen() {
             <TouchableOpacity
               style={[
                 styles.confirmButton,
-                (!selectedDate || !selectedTime || isLoading) && styles.disabledButton
+                (!selectedDate || !selectedTime || !selectedStaff || isLoading) && styles.disabledButton
               ]}
               onPress={handleConfirm}
-              disabled={!selectedDate || !selectedTime || isLoading}
+              disabled={!selectedDate || !selectedTime || !selectedStaff || isLoading}
             >
               <LinearGradient
                 colors={['#86A8E7', '#7F7FD5']}
@@ -770,5 +939,85 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 2,
+  },
+  staffSection: {
+    marginTop: 20,
+    // marginBottom: 12,
+    // paddingHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2A363B',
+    marginBottom: 12,
+    // paddingHorizontal: 12,
+  },
+  staffLoading: {
+    marginVertical: 16,
+  },
+  staffList: {
+    paddingVertical: 4,
+    gap: 16,
+    paddingHorizontal: 12,
+  },
+  staffCard: {
+    alignItems: 'center',
+    width: 70,
+    position: 'relative',
+  },
+  selectedStaffCard: {
+    opacity: 1,
+  },
+  staffImageWrapper: {
+    position: 'relative',
+    marginBottom: 4,
+  },
+  staffImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  staffImagePlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#86A8E7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  staffInitials: {
+    fontSize: 20,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  staffSelectedIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+  },
+  selectedIconBackground: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#86A8E7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  staffName: {
+    fontSize: 12,
+    color: '#2A363B',
+    textAlign: 'center',
+    fontWeight: '500',
+    width: '100%',
+  },
+  unavailableTimeSlot: {
+    backgroundColor: '#f0f0f0',
+    opacity: 0.6,
+    borderColor: '#ddd',
+  },
+  unavailableTimeSlotText: {
+    color: '#999',
   },
 }); 

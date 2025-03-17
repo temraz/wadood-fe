@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   TextInput,
   SafeAreaView,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -14,6 +16,7 @@ import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, getHeaders } from '../app/constants/api';
 import { useLanguage } from './context/LanguageContext';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function AddStaffScreen() {
   const router = useRouter();
@@ -22,6 +25,9 @@ export default function AddStaffScreen() {
   const [newStaffPhone, setNewStaffPhone] = useState('+966 ');
   const [newStaffPassword, setNewStaffPassword] = useState('');
   const [newStaffGender, setNewStaffGender] = useState('');
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formatPhoneNumber = (number) => {
     // Remove all non-digit characters
@@ -48,9 +54,42 @@ export default function AddStaffScreen() {
     setNewStaffPhone(formatPhoneNumber(text));
   };
 
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Toast.show({
+          type: 'error',
+          text1: 'Permission needed',
+          text2: 'Please grant camera roll permissions to upload a profile picture',
+        });
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setProfilePicture(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to pick image',
+      });
+    }
+  };
+
   const handleAddStaff = async () => {
-    if (newStaffName.trim() && newStaffPhone.trim() && newStaffPhone.length >= 12) {
+    if (newStaffName.trim() && newStaffPhone.trim() && newStaffPhone.length >= 12 && newStaffEmail.trim()) {
       try {
+        setIsSubmitting(true);
         const token = await AsyncStorage.getItem('token');
         if (!token) {
           Toast.show({
@@ -62,28 +101,37 @@ export default function AddStaffScreen() {
           return;
         }
 
-        console.log('Making API call to add staff with data:', {
-          name: newStaffName.trim(),
-          phone: newStaffPhone.trim().replace(/\s+/g, ''),
-          password: newStaffPassword.trim(),
-          gender: newStaffGender,
-          city_id: 1 // Adding required city_id field
-        });
+        // Create FormData object
+        const formData = new FormData();
+        formData.append('name', newStaffName.trim());
+        formData.append('phone', newStaffPhone.trim().replace(/\s+/g, ''));
+        formData.append('password', newStaffPassword.trim());
+        formData.append('email', newStaffEmail.trim());
+        formData.append('gender', newStaffGender);
 
-        const response = await fetch(`${API_BASE_URL}/api/auth/staff`, {
+        // Append profile picture if selected
+        if (profilePicture) {
+          const localUri = profilePicture.uri;
+          const filename = localUri.split('/').pop();
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image';
+
+          formData.append('profile_picture', {
+            uri: localUri,
+            name: filename,
+            type,
+          });
+        }
+
+        console.log('Making API call to add staff with FormData');
+
+        const response = await fetch(`${API_BASE_URL}/api/users/staff`, {
           method: 'POST',
           headers: {
-            ...getHeaders(language),
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            'Accept-Language': language,
           },
-          body: JSON.stringify({
-            name: newStaffName.trim(),
-            phone: newStaffPhone.trim().replace(/\s+/g, ''),
-            password: newStaffPassword.trim(),
-            gender: newStaffGender,
-            city_id: 1 // Adding required city_id field
-          })
+          body: formData,
         });
 
         console.log('API Response status:', response.status);
@@ -120,6 +168,8 @@ export default function AddStaffScreen() {
           text1: 'Error',
           text2: error.message || 'Failed to add staff member',
         });
+      } finally {
+        setIsSubmitting(false);
       }
     } else {
       Toast.show({
@@ -142,6 +192,17 @@ export default function AddStaffScreen() {
         </View>
 
         <View style={styles.content}>
+          <TouchableOpacity style={styles.profilePictureContainer} onPress={pickImage}>
+            {profilePicture ? (
+              <Image source={{ uri: profilePicture.uri }} style={styles.profilePicture} />
+            ) : (
+              <View style={styles.profilePicturePlaceholder}>
+                <Ionicons name="camera" size={24} color="#86A8E7" />
+                <Text style={styles.uploadText}>Upload Photo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Staff Name</Text>
             <TextInput
@@ -149,6 +210,19 @@ export default function AddStaffScreen() {
               placeholder="Enter staff name"
               value={newStaffName}
               onChangeText={setNewStaffName}
+              placeholderTextColor="#666"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter email address"
+              value={newStaffEmail}
+              onChangeText={setNewStaffEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
               placeholderTextColor="#666"
             />
           </View>
@@ -214,10 +288,10 @@ export default function AddStaffScreen() {
           <TouchableOpacity
             style={[
               styles.addButton,
-              (!newStaffName.trim() || !newStaffPhone.trim() || !newStaffPassword.trim() || !newStaffGender) && styles.addButtonDisabled
+              (!newStaffName.trim() || !newStaffPhone.trim() || !newStaffPassword.trim() || !newStaffGender || !newStaffEmail.trim() || isSubmitting) && styles.addButtonDisabled
             ]}
             onPress={handleAddStaff}
-            disabled={!newStaffName.trim() || !newStaffPhone.trim() || !newStaffPassword.trim() || !newStaffGender}
+            disabled={!newStaffName.trim() || !newStaffPhone.trim() || !newStaffPassword.trim() || !newStaffGender || !newStaffEmail.trim() || isSubmitting}
           >
             <LinearGradient
               colors={['#86A8E7', '#7F7FD5']}
@@ -225,7 +299,11 @@ export default function AddStaffScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.gradient}
             >
-              <Text style={styles.addButtonText}>Add Staff</Text>
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.addButtonText}>Add Staff</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -267,6 +345,31 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     backgroundColor: '#F5F7FA',
+  },
+  profilePictureContainer: {
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  profilePicture: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  profilePicturePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#86A8E7',
+    borderStyle: 'dashed',
+  },
+  uploadText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#86A8E7',
   },
   inputGroup: {
     marginBottom: 20,

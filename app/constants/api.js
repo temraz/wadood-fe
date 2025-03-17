@@ -7,8 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // - On Windows: run 'ipconfig' in command prompt
 // Make sure your device is on the same network as your computer
 
-export const API_BASE_URL = 'http://192.168.8.53:8080';
-// export const API_BASE_URL = 'http://172.20.10.2:8080';
+// export const API_BASE_URL = 'http://192.168.8.53:8080';
+export const API_BASE_URL = 'http://192.168.1.9:8080';
 
 
 export const ENDPOINTS = {

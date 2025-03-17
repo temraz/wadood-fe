@@ -61,6 +61,22 @@ export function CartProvider({ children }) {
       return { success: false, error: 'Missing required parameters' };
     }
 
+    // Add debug logging
+    console.log('Provider status check:', {
+      productId: product.id,
+      providerId,
+      providerStatus: product.provider?.is_open,
+      provider: product.provider
+    });
+
+    // Check if provider is closed
+    if (product.provider?.is_open === false) {
+      return { 
+        success: false, 
+        error: language === 'ar' ? 'المتجر مغلق حالياً' : 'Store is currently closed' 
+      };
+    }
+
     try {
       setIsLoading(true);
       const token = await ensureValidToken(language);
